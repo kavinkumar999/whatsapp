@@ -46,7 +46,7 @@ def vocabulary():
 
 
 def create_help_message():
-    help_message = "pi*VocabBot* by kavin ! \n\n" \
+    help_message = "*VocabBot* by kavin ! \n\n" \
         "You can ask the bot the below listed things:  \n"\
         "*meaning* - type the word \n"\
         "*examples* - type the word \n"\
