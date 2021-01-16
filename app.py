@@ -93,7 +93,7 @@ def get_dictionary_response(word):
 
 @app.route("/")
 def home():
-    return "<h1>Hello ewhatsapp2 bot</h1>"
+    return "<h1>Hello ewhatsapp2 bot</h1>" #welcome message
 
 
 if __name__ == "__main__":
