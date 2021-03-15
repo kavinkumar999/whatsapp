@@ -6,6 +6,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 app = Flask(__name__)
 
+#sms end point
 @app.route('/sms', methods=['POST'])
 def vocabulary():
     word_synonym = ""
@@ -24,20 +25,20 @@ def vocabulary():
         input_string = words[1].strip().split()
         if len(input_string) == 1:
             response = get_dictionary_response(input_string[0])
-            if search_type == "meaning":
+            if search_type == "Meaning":
                 message.body(response["meaning"])
                 responded = True
-            if search_type == "synonyms":
+            if search_type == "Synonyms":
                 for synonym in response["synonyms"]:
                     word_synonym += synonym + "\n"
                 message.body(word_synonym)
                 responded = True
-            if search_type == "antonyms":
+            if search_type == "Antonyms":
                 for antonym in response["antonyms"]:
                     word_antonym += antonym + "\n"
                 message.body(word_antonym)
                 responded = True
-            if search_type == "examples":
+            if search_type == "Examples":
                 message.body(response["examples"])
                 responded = True
     if not responded:
@@ -48,10 +49,10 @@ def vocabulary():
 def create_help_message():
     help_message = "*VocabBot* by kavin ! \n\n" \
         "You can ask the bot the below listed things:  \n"\
-        "*meaning* - type the word \n"\
-        "*examples* - type the word \n"\
-        "*synonyms* - type the word \n"\
-        "*antonyms* - type the word \n"
+        "*Meaning* - type the word \n"\
+        "*Examples* - type the word \n"\
+        "*Synonyms* - type the word \n"\
+        "*Antonyms* - type the word \n"
     return help_message
 
 
@@ -93,7 +94,7 @@ def get_dictionary_response(word):
 
 @app.route("/")
 def home():
-    return "<h1>Hello ewhatsapp2 bot</h1>" #welcome message
+    return "<h1>Hello bot 🤖 !</h1>" #welcome message
 
 
 if __name__ == "__main__":
