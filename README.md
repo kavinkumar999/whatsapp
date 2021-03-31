@@ -1,2 +1,2 @@
 # whatsapp BOT
-Tiny thesaurus bot was made to aviod switch whatsapp to search simple words 
+The Tiny thesaurus bot was made to avoid switch whatsapp to search simple words 
