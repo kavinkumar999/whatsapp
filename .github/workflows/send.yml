@@ -1,0 +1,40 @@
+name: Send WhatsApp messages
+
+on:
+  # Manual trigger (Actions tab -> Run workflow), with a custom message.
+  workflow_dispatch:
+    inputs:
+      message:
+        description: "Message text ({{name}} is replaced per recipient)"
+        required: true
+        default: "Hello {{name}} 👋 — automated message."
+  # Scheduled trigger. GitHub cron is best-effort and can be delayed/skipped;
+  # fine for low-stakes sends, not for exact-time delivery (that's Phase 2).
+  schedule:
+    - cron: "0 9 * * *" # ~09:00 UTC daily
+
+# Never let two runs touch the Upstash session at the same time — overlapping
+# runs would race and clobber each other's saved auth state.
+concurrency:
+  group: whatsapp-send
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --prefix service
+
+      - name: Send messages
+        env:
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          MESSAGE: ${{ github.event.inputs.message || 'Daily update 👋' }}
+        run: node service/src/send.js
