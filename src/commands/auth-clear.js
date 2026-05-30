@@ -8,7 +8,7 @@
 
 import { printCliFailure } from '../lib/cli-print.js';
 import { requireUpstashEnv } from '../lib/env.js';
-import { authSnapshotKey, clearAuthSnapshot } from '../lib/store.js';
+import { authSnapshotKey, clearAuthSnapshot } from '../lib/redis.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 

@@ -197,8 +197,7 @@ npm run group-id -- "https://chat.whatsapp.com/INVITE_CODE"  # resolve from an i
 ```
 src/lib/                     shared modules (no side effects beyond import)
   env.js                       loads .env + validates required env vars
-  redis.js                     one lazy Upstash client + the Redis key names
-  store.js                     read/write the Baileys auth snapshot in Redis
+  redis.js                     lazy Upstash client, KEYS, and Baileys auth snapshot I/O
   whatsapp.js                  open a connection (with retry on the 515 handshake)
   messages.js                  message rotation: read current / advance / seed
   recipients.js                load/validate recipients from Redis, build JIDs

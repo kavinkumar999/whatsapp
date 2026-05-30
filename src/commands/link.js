@@ -15,7 +15,7 @@ import path from 'path';
 import QRCode from 'qrcode';
 import { printCliFailure } from '../lib/cli-print.js';
 import { requireUpstashEnv } from '../lib/env.js';
-import { authSnapshotKey, clearAuthSnapshot, restoreAuthDir, saveAuthDir } from '../lib/store.js';
+import { authSnapshotKey, clearAuthSnapshot, restoreAuthDir, saveAuthDir } from '../lib/redis.js';
 import { sleep } from '../lib/util.js';
 import { connectWithRetry } from '../lib/whatsapp.js';
 

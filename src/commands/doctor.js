@@ -9,7 +9,7 @@ import { CLI_LINE, printCliFailure, wrapDetail } from '../lib/cli-print.js';
 import { requireUpstashEnv } from '../lib/env.js';
 import { getCurrentMessage } from '../lib/messages.js';
 import { loadRecipients } from '../lib/recipients.js';
-import { authSnapshotKey, hasStoredSession } from '../lib/store.js';
+import { authSnapshotKey, hasStoredSession } from '../lib/redis.js';
 
 const results = [];
 const record = (ok, label, detail, icon = '') =>
