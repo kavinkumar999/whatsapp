@@ -8,19 +8,22 @@
 // We treat each auth file as opaque text and snapshot the whole folder into one
 // Redis key, so we never have to understand Baileys' internal serialization.
 
-import { Redis } from '@upstash/redis';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { KEYS, redis } from './redis.js';
 
-/** Redis JSON key for the Baileys auth folder snapshot (for docs / errors). */
-export const authSnapshotKey = process.env.UPSTASH_AUTH_KEY || 'wa:auth_info';
+/** Redis key holding the Baileys auth folder snapshot (exported for docs / errors). */
+export const authSnapshotKey = KEYS.auth;
 
-// Reads UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN from the environment.
-const redis = Redis.fromEnv();
+/** True if a non-empty session snapshot is stored in Redis. */
+export async function hasStoredSession() {
+  const snapshot = await redis().get(authSnapshotKey);
+  return Boolean(snapshot) && typeof snapshot === 'object' && Object.keys(snapshot).length > 0;
+}
 
 /** Remove the stored session from Upstash (e.g. before a clean `npm run link`). */
 export async function clearAuthSnapshot() {
-  await redis.del(authSnapshotKey);
+  await redis().del(authSnapshotKey);
 }
 
 /**
@@ -29,7 +32,7 @@ export async function clearAuthSnapshot() {
  */
 export async function restoreAuthDir(dir) {
   await fs.mkdir(dir, { recursive: true });
-  const snapshot = await redis.get(authSnapshotKey); // { filename: contents } | null
+  const snapshot = await redis().get(authSnapshotKey); // { filename: contents } | null
   if (!snapshot || typeof snapshot !== 'object') return false;
 
   for (const [name, contents] of Object.entries(snapshot)) {
@@ -43,10 +46,11 @@ export async function restoreAuthDir(dir) {
  * Call this after a send, in a finally block, so a mutated session is never lost.
  */
 export async function saveAuthDir(dir) {
-  const files = await fs.readdir(dir);
+  const entries = await fs.readdir(dir, { withFileTypes: true });
   const snapshot = {};
-  for (const name of files) {
-    snapshot[name] = await fs.readFile(path.join(dir, name), 'utf-8');
+  for (const entry of entries) {
+    if (!entry.isFile()) continue; // Baileys stores flat files; skip anything else
+    snapshot[entry.name] = await fs.readFile(path.join(dir, entry.name), 'utf-8');
   }
-  await redis.set(authSnapshotKey, snapshot);
+  await redis().set(authSnapshotKey, snapshot);
 }
