@@ -1,18 +1,20 @@
-// Thin wrapper around Baileys: open a single connection backed by an auth folder.
+// Baileys connection helpers backed by a local auth folder.
 //
 // Baileys is event-driven and frequently asks for a reconnect right after the
-// first handshake (DisconnectReason.restartRequired = 515), so callers should
-// open in a loop and recreate the socket on that code. `openOnce` resolves once
-// the connection either opens or closes, and reports the close code so the
-// caller can decide whether to retry.
+// first handshake (DisconnectReason.restartRequired = 515), so we open in a loop
+// and recreate the socket on that code. `openOnce` opens a single socket and
+// resolves when it opens or closes; `connectWithRetry` drives the retry loop and
+// is what every command should use.
 
 import makeWASocket, {
   Browsers,
-  useMultiFileAuthState,
+  DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
+import { sleep } from './util.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 
@@ -61,4 +63,42 @@ export async function openOnce(authDir, onSocket, options) {
       }
     });
   });
+}
+
+/**
+ * Open a connection, retrying through the normal restart-required handshake.
+ * Throws a clear error if WhatsApp logs the session out, or if all attempts fail.
+ *
+ * @param {string} authDir
+ * @param {object} [options]
+ * @param {(sock: any) => Promise<void>} [options.onSocket]
+ * @param {(update: any) => void} [options.onConnectionUpdate]
+ * @param {number} [options.maxAttempts=5]
+ * @param {number} [options.retryDelayMs=2000]
+ * @param {string} [options.loggedOutMessage]
+ * @returns {Promise<any>} the open socket (caller owns it and must `sock.end()`).
+ */
+export async function connectWithRetry(authDir, options = {}) {
+  const {
+    onSocket,
+    onConnectionUpdate,
+    maxAttempts = 5,
+    retryDelayMs = 2_000,
+    loggedOutMessage = 'Session logged out by WhatsApp. Re-run `npm run link` locally to re-pair.',
+  } = options;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const { sock, status, code } = await openOnce(authDir, onSocket, { onConnectionUpdate });
+    if (status === 'open') return sock;
+
+    sock.end(undefined);
+    if (code === DisconnectReason.loggedOut) {
+      throw new Error(loggedOutMessage);
+    }
+    // restartRequired (515) right after pairing is normal — recreate and continue.
+    console.warn(`connect attempt ${attempt} closed (code ${code}); retrying...`);
+    await sleep(retryDelayMs);
+  }
+
+  throw new Error(`Could not establish a connection after ${maxAttempts} attempts`);
 }

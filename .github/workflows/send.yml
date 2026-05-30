@@ -28,9 +28,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
-        run: npm install --prefix service
+        run: npm ci
 
       - name: Send messages
         env:
@@ -39,4 +40,4 @@ jobs:
           # Manual run: message from the workflow form. Scheduled: rotate quote from Redis.
           MESSAGE_SOURCE: ${{ github.event_name == 'schedule' && 'redis' || 'env' }}
           MESSAGE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.message || '' }}
-        run: node service/src/send.js
+        run: node src/commands/send.js

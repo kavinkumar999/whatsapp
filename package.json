@@ -5,11 +5,12 @@
   "type": "module",
   "description": "Send WhatsApp messages via Baileys, triggered from GitHub Actions, with the session persisted in Upstash Redis.",
   "scripts": {
-    "link": "node src/link.js",
-    "send": "node src/send.js",
-    "group-id": "node src/group-id.js",
-    "quotes:seed": "node src/quotes-seed.js",
-    "auth:clear": "node src/auth-clear.js"
+    "link": "node src/commands/link.js",
+    "send": "node src/commands/send.js",
+    "check": "node src/commands/check.js",
+    "group-id": "node src/commands/group-id.js",
+    "quotes:seed": "node src/commands/quotes-seed.js",
+    "auth:clear": "node src/commands/auth-clear.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

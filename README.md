@@ -1,8 +1,8 @@
 # WhatsApp automation (send)
 
 Send WhatsApp messages with [Baileys](https://github.com/WhiskeySockets/Baileys),
-triggered from GitHub Actions. The WhatsApp session is stored in **Upstash Redis**
-so GitHub's ephemeral runners don't need to hold a stateful connection.
+triggered from GitHub Actions. The WhatsApp session lives in **Upstash Redis** so
+GitHub's ephemeral runners don't need to hold a stateful connection.
 
 > **How the session works:** you pair the device **once** locally (`npm run link`),
 > which seeds the auth state into Upstash. Every send then **restores → connects →
@@ -12,137 +12,157 @@ so GitHub's ephemeral runners don't need to hold a stateful connection.
 ## Layout
 
 ```
-service/                 Baileys sender (Node, ESM)
-  src/load-env.js        load service/.env (and cwd .env) before Redis/Baileys
-  src/store.js           read/write the auth state in Upstash
-  src/whatsapp.js        open a Baileys connection
-  src/link.js            ONE-TIME local pairing -> seeds Upstash
-  src/send.js            CI entrypoint: restore -> send -> save
-  src/quotes.js          next quote from Upstash + advance cursor
-  src/quotes-seed.js     upload/replace quote JSON array in Upstash
-  src/group-id.js        print group @g.us JIDs (invite URL or --list)
-recipients.json          who to message (number or group jid + optional name)
-quotes.example.json      sample 30-day list; copy to quotes.json for seeding
+src/lib/                     shared modules (no side effects beyond import)
+  env.js                       loads .env + validates required env vars
+  redis.js                     one lazy Upstash client + the Redis key names
+  store.js                     read/write the Baileys auth snapshot in Redis
+  whatsapp.js                  open a connection (with retry on the 515 handshake)
+  quotes.js                    quote rotation: read next / seed list
+  recipients.js                load + validate recipients.json, build JIDs
+  paths.js                     find data files from cwd or repo root
+  util.js                      tiny helpers (sleep)
+src/commands/                CLI entrypoints (one per npm script)
+  link.js                      ONE-TIME local pairing -> seeds Upstash
+  send.js                      restore -> send -> save  (supports --dry-run)
+  check.js                     validate config without connecting (doctor)
+  group-id.js                  print group @g.us JIDs (invite URL or --list)
+  quotes-seed.js               upload/replace the quote list in Upstash
+  auth-clear.js                delete the stored session from Upstash
+recipients.json              who to message (number or group jid + optional name)
+quotes.example.json          sample 30-day list; copy to quotes.json to seed
 .github/workflows/send.yml   manual + ~6 AM IST daily (Redis quote rotation)
 ```
+
+Run every command from the repo root (`npm run <script>`, or `node src/commands/<name>.js`).
+
+## Commands
+
+| npm script | What it does |
+| --- | --- |
+| `npm run link` | One-time device pairing; seeds the session into Upstash. |
+| `npm run check` | Validate env, recipients, session, and quotes — **no send**. |
+| `npm run send` | Send to every recipient. Add `-- --dry-run` to preview only. |
+| `npm run quotes:seed -- <file>` | Upload a JSON array of quote strings to Upstash. |
+| `npm run group-id -- --list` | List the linked account's group JIDs. |
+| `npm run group-id -- <invite-url>` | Resolve a group JID from an invite link. |
+| `npm run auth:clear` | Delete the stored session from Upstash. |
 
 ## One-time setup
 
 1. **Create a free Upstash Redis database** at <https://upstash.com>. Copy the
-   **REST URL** and **REST TOKEN** (REST, not the `redis://` URL).
+   **REST URL** and **REST TOKEN** (the REST pair, not the `redis://` URL).
 
-2. **Pair the device locally** (use a dedicated number, not your main one).
+2. **Configure credentials.** Copy `.env.example` → `.env` and fill in
+   `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`. (`.env` is gitignored;
+   you can also export the variables in your shell instead.)
 
-   Either export variables in the shell, or put them in **`service/.env`** (gitignored)
-   — `link` and `send` load that file automatically before reading `process.env`.
-
-   **QR in the terminal:**
+3. **Pair the device** (use a dedicated/second number, not your main one):
 
    ```bash
-   cd service
    npm install
-   UPSTASH_REDIS_REST_URL=https://xxx.upstash.io \
-   UPSTASH_REDIS_REST_TOKEN=xxxxx \
    npm run link
    ```
 
-   A QR code renders in the terminal. On the phone, open WhatsApp on the account you want
-   to link and go: **Settings (or ⋮) → Linked devices → Link a device → Scan QR code**,
-   then scan the terminal QR. On success the session is saved to Upstash.
+   A QR code renders in the terminal. On the phone, open WhatsApp on the account you
+   want to link and go **Settings (or ⋮) → Linked devices → Link a device → Scan QR
+   code**, then scan the terminal QR. On success the session is saved to Upstash.
 
-   **If linking fails or you never get a usable QR**
-
-   - **Stale session:** if you retried with a different number or a half-finished link,
-     run **`npm run auth:clear`** from `service/` (deletes the Redis snapshot; default key
-     `wa:auth_info`) and remove any local `auth_info/` folder under the directory you run from,
-     then run `npm run link`
-     again.
-   - **Same device confusion:** you cannot “link” the WhatsApp app that is already logged
-     in on that phone to itself in a useful way for Baileys; use a **second number / test
-     line** on another phone or a fresh WhatsApp account as the README recommends.
-   - **"Logged out" right after scanning:** stale or half-linked state.
-     From `service/` run **`LINK_FRESH=1 npm run link`** once (clears the Upstash snapshot key
-     and local `auth_info/`), then scan the **new** QR immediately.
-     If you only saw "Waiting for QR…" and no QR, that is almost always stale auth — same fix.
-     Or run `npm run auth:clear` and remove the local `auth_info/` folder,
-     then `npm run link` again.
-
-   On success the session is saved to Upstash.
-
-3. **Add GitHub repo secrets** (Settings → Secrets and variables → Actions):
+4. **Add the same two values as GitHub repo secrets**
+   (Settings → Secrets and variables → Actions):
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
 
-4. **Daily quotes (scheduled sends):** the workflow runs on a **6 AM India (IST)** cron
-   (`30 0 * * *` UTC — IST is UTC+5:30 year-round). That run uses **`MESSAGE_SOURCE=redis`**:
-   it reads a **JSON array of strings** from Upstash key **`wa:quotes`** (default), sends the
-   string at the current **cursor** key **`wa:quotes:cursor`**, then stores the next index
-   (wraps after the last item). You can change the list anytime in the Upstash console or by
-   re-seeding; the cursor keeps advancing modulo the new length.
+5. **Edit `recipients.json`** with the real numbers / group JIDs (see below).
 
-   **Seed or refresh the list from a file** (after `service/.env` has `UPSTASH_*`):
+6. **Verify everything** before the first real send:
 
    ```bash
-   cp quotes.example.json quotes.json   # edit quotes.json, then:
-   cd service && npm run quotes:seed -- ../quotes.json
+   npm run check               # env + recipients + session + message/quotes
+   npm run send -- --dry-run   # prints exactly what would be sent, sends nothing
    ```
 
-   Optional: **`QUOTES_RESET_CURSOR=1 npm run quotes:seed -- ../quotes.json`** resets the
-   cursor to 0 so the next send starts at the first quote. Override keys with
-   **`UPSTASH_QUOTES_KEY`** / **`UPSTASH_QUOTES_CURSOR_KEY`** in `.env` or GitHub env if needed.
+### If linking fails or no usable QR appears
 
-5. **Edit `recipients.json`** with the real numbers / group jid.
-   - `to`: international number, digits only (e.g. `919876543210`), **or** a group
-     jid ending in `@g.us`.
-   - `name`: optional; `{{name}}` in the message is replaced with it.
+Almost always stale auth. Run:
 
-   **Groups:** The account you linked with `npm run link` must **already be in** that group.
-   Set `to` to the full group JID (long id + `@g.us`), for example:
+```bash
+LINK_FRESH=1 npm run link   # clears the Upstash key + local auth_info/, then shows a fresh QR
+```
 
-   ```json
-   { "to": "120363123456789012@g.us", "name": "Team chat" }
-   ```
+Then scan the **new** QR immediately (it refreshes every few seconds). Other tips:
 
-   That id is **not** the same string as an invite link (`https://chat.whatsapp.com/…`).
+- You can't usefully "link" the WhatsApp app that's already logged in on that phone
+  to itself — use a **second number / test line** or a fresh account.
+- If you hit a device limit, remove old **Chrome/desktop** entries under
+  WhatsApp → Linked devices.
+- `npm run auth:clear` deletes the Redis snapshot only; also `rm -rf auth_info` if a
+  local folder is lingering, then `npm run link` again.
 
-6. **Find the id (after `npm run link` once, from `service/` with `service/.env` set):**
+## Recipients
 
-   - **You are already in the group:** list every group JID for the linked account:
+`recipients.json` is a JSON array. Each entry is a bare string or an object:
 
-     ```bash
-     npm run group-id -- --list
-     ```
+```json
+[
+  { "to": "919876543210", "name": "Asha" },
+  { "to": "120363123456789012@g.us", "name": "Team chat" }
+]
+```
 
-   - **You have an invite link** (anyone can share it; you may not be a member yet):
+- **`to`** — an international number (digits only, e.g. `919876543210`) **or** a group
+  JID ending in `@g.us`.
+- **`name`** — optional; `{{name}}` in the message is replaced with it (blank if absent).
 
-     ```bash
-     npm run group-id -- "https://chat.whatsapp.com/INVITE_CODE_HERE"
-     ```
+**Groups:** the linked account must **already be a member** of the group, and the JID
+is the long `…@g.us` id — **not** the `https://chat.whatsapp.com/…` invite link. Find the
+JID with (run after `npm run link`):
 
-     The script prints the `"…@g.us"` string to paste into `recipients.json` as `to`.
-     Invalid or expired invites will error from WhatsApp.
+```bash
+npm run group-id -- --list                                   # you're already in the group
+npm run group-id -- "https://chat.whatsapp.com/INVITE_CODE"  # resolve from an invite link
+```
+
+## Daily quotes (scheduled sends)
+
+The workflow's **6 AM IST** cron (`30 0 * * *` UTC — IST is UTC+5:30, no DST) runs with
+`MESSAGE_SOURCE=redis`: it reads a **JSON array of strings** from Upstash key `wa:quotes`,
+sends the string at the current cursor (`wa:quotes:cursor`), then advances the cursor,
+wrapping after the last item. Change the list anytime; the cursor stays valid modulo the
+new length.
+
+Seed or refresh the list from a file:
+
+```bash
+cp quotes.example.json quotes.json   # edit quotes.json, then:
+npm run quotes:seed                  # (or: npm run quotes:seed -- path/to/quotes.json)
+```
+
+Add `QUOTES_RESET_CURSOR=1` to also reset the cursor to 0 so the next send starts at the
+first quote. Override the keys with `UPSTASH_QUOTES_KEY` / `UPSTASH_QUOTES_CURSOR_KEY`.
 
 ## Sending
 
-- **Manual:** Actions tab → *Send WhatsApp messages* → *Run workflow* → type a message
-  (uses `MESSAGE` from the form, not Redis quotes).
-- **Scheduled:** ~**6:00 IST** daily (`30 0 * * *` UTC). Uses the **next quote** from Upstash
-  and advances the cursor. (GitHub cron is best-effort and can run a few minutes late.)
-- **Local (same vars as `export`, but in `service/.env`):** copy
-  `service/.env.example` → `service/.env`, set `UPSTASH_*`, then either set **`MESSAGE`**
-  or **`MESSAGE_SOURCE=redis`** (quotes must exist in Upstash). Run **`cd service && npm run send`**
-  or from the **repo root**:
+- **Manual:** Actions → *Send WhatsApp messages* → *Run workflow* → type a message
+  (uses the form text, not the Redis quotes).
+- **Scheduled:** ~**6:00 IST** daily. Uses the next quote and advances the cursor.
+  (GitHub cron is best-effort and can run a few minutes late.)
+- **Local:** with `.env` set, choose a source — set `MESSAGE`, or set
+  `MESSAGE_SOURCE=redis` (quotes must be seeded) — then:
 
   ```bash
-  node service/src/send.js
+  npm run send                   # or: node src/commands/send.js
   ```
+
+  Append `-- --dry-run` (or set `DRY_RUN=1`) to print the resolved recipients and
+  message **without connecting or sending**. A dry run with `MESSAGE_SOURCE=redis`
+  peeks the next quote and does **not** advance the cursor.
 
 ## Notes & limits
 
-- **Anti-ban:** keep volume low, messages are throttled 5–30s apart (configurable
-  via `MIN_DELAY_MS` / `MAX_DELAY_MS`). Prefer recipients who have your number saved.
-- **Re-pairing:** WhatsApp drops linked devices occasionally. When sends start
-  failing with a "logged out" error, just run `npm run link` again.
+- **Anti-ban:** keep volume low; messages are throttled 5–30s apart (tune with
+  `MIN_DELAY_MS` / `MAX_DELAY_MS`). Prefer recipients who have your number saved.
+- **Re-pairing:** WhatsApp drops linked devices occasionally. When sends fail with a
+  "logged out" error, run `npm run link` again.
 - **Baileys is unofficial** and against WhatsApp's ToS; numbers can be banned.
 
 ## Roadmap
