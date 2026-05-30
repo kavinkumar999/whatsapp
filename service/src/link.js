@@ -9,13 +9,8 @@ import './load-env.js';
 // Default: scan the QR printed in the terminal (WhatsApp → Linked devices →
 // Link a device → Scan QR code).
 //
-// Optional pairing-code flow (no QR): set PHONE_NUMBER (digits only), then
-// "Link with phone number instead" on the phone.
-//
 // If linking dies with "logged out", reset and try again from `service/`:
 //   LINK_FRESH=1 npm run link
-//
-// PHONE_NUMBER (pairing only): your number in international format, digits only, no '+'.
 
 import { DisconnectReason } from '@whiskeysockets/baileys';
 import { promises as fs } from 'fs';
@@ -30,7 +25,6 @@ import {
 import { openOnce } from './whatsapp.js';
 
 const AUTH_DIR = process.env.AUTH_DIR || path.resolve(process.cwd(), 'auth_info');
-const PHONE_NUMBER = process.env.PHONE_NUMBER;
 const MAX_ATTEMPTS = 5;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -66,38 +60,24 @@ async function main() {
     }
   }
 
-  const usePairingCode = Boolean(PHONE_NUMBER);
-
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const { sock, status, code } = await openOnce(
       AUTH_DIR,
       async (sock) => {
         if (sock.authState.creds.registered) return;
-        if (usePairingCode) {
-          await sleep(3_000); // Baileys recommends a brief pause before requesting
-          const pairingCode = await sock.requestPairingCode(PHONE_NUMBER);
-          console.log('\n=============================================');
-          console.log(`  Pairing code:  ${pairingCode}`);
-          console.log('  WhatsApp > Linked Devices > Link a device >');
-          console.log('  "Link with phone number instead", then enter the code.');
-          console.log('=============================================\n');
-        } else {
-          console.log(
-            'Waiting for QR… (if nothing appears, widen your terminal)\n'
-          );
-        }
+        console.log(
+          'Waiting for QR… (if nothing appears, widen your terminal)\n'
+        );
       },
-      usePairingCode
-        ? undefined
-        : {
-            onConnectionUpdate: (update) => {
-              if (update.qr) {
-                void printQr(update.qr).catch((err) => {
-                  console.error('Could not render QR:', err.message || err);
-                });
-              }
-            },
+      {
+        onConnectionUpdate: (update) => {
+          if (update.qr) {
+            void printQr(update.qr).catch((err) => {
+              console.error('Could not render QR:', err.message || err);
+            });
           }
+        },
+      }
     );
 
     if (status === 'open') {
@@ -110,23 +90,14 @@ async function main() {
 
     sock.end(undefined);
     if (code === DisconnectReason.loggedOut) {
-      const hints = usePairingCode
-        ? [
-            '  3) Same phone as PHONE_NUMBER: Linked devices → remove old desktop/Chrome links if present',
-            '  4) Enter the pairing code immediately under "Link with phone number instead"',
-            '  Or omit PHONE_NUMBER and use QR linking instead:  npm run link',
-          ]
-        : [
-            '  3) If no QR appeared: stale session — run LINK_FRESH=1 npm run link, then scan immediately',
-            '  4) Linked devices → remove old linked "Chrome" / desktop sessions if you hit device limits',
-            '  5) Scan the QR as soon as it appears (it refreshes)',
-          ];
       throw new Error(
         [
           'WhatsApp ended linking as logged out (session rejected). Try:',
           `  1) Clean slate, then link again from service/:  LINK_FRESH=1 npm run link`,
           `  2) Or delete Redis key "${authSnapshotKey}" and rm -rf the auth folder: ${AUTH_DIR}`,
-          ...hints,
+          '  3) If no QR appeared: stale session — run LINK_FRESH=1 npm run link, then scan immediately',
+          '  4) Linked devices → remove old linked "Chrome" / desktop sessions if you hit device limits',
+          '  5) Scan the QR as soon as it appears (it refreshes)',
         ].join('\n')
       );
     }

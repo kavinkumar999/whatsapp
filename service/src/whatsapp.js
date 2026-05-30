@@ -21,7 +21,7 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
  * @param {string} authDir - local folder holding the auth state.
  * @param {(sock: any) => Promise<void>} [onSocket] - optional hook called right
  *        after socket creation, before the connection opens (used by `link` to
- *        request a pairing code).
+ *        log while waiting for QR).
  * @param {{ onConnectionUpdate?: (update: any) => void }} [options] - e.g. `link`
  *        passes a handler to print QR codes from `update.qr`.
  * @returns {Promise<{ sock: any, status: 'open' | 'close', code?: number }>}

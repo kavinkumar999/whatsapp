@@ -36,7 +36,7 @@ quotes.example.json      sample 30-day list; copy to quotes.json for seeding
    Either export variables in the shell, or put them in **`service/.env`** (gitignored)
    — `link` and `send` load that file automatically before reading `process.env`.
 
-   **Default: QR in the terminal** (no `PHONE_NUMBER` needed):
+   **QR in the terminal:**
 
    ```bash
    cd service
@@ -50,24 +50,21 @@ quotes.example.json      sample 30-day list; copy to quotes.json for seeding
    to link and go: **Settings (or ⋮) → Linked devices → Link a device → Scan QR code**,
    then scan the terminal QR. On success the session is saved to Upstash.
 
-   **Optional: pairing code instead of QR** — set `PHONE_NUMBER` (digits only, same account
-   you are linking). Then choose **Link with phone number instead** and enter the code from
-   the terminal quickly.
-
-   **If linking fails or you never get a usable QR / code**
+   **If linking fails or you never get a usable QR**
 
    - **Stale session:** if you retried with a different number or a half-finished link,
-     delete the Redis snapshot key (default name `wa:auth_info` in Upstash) and remove any
-     local `auth_info/` folder under the directory you run from, then run `npm run link`
+     run **`npm run auth:clear`** from `service/` (deletes the Redis snapshot; default key
+     `wa:auth_info`) and remove any local `auth_info/` folder under the directory you run from,
+     then run `npm run link`
      again.
    - **Same device confusion:** you cannot “link” the WhatsApp app that is already logged
      in on that phone to itself in a useful way for Baileys; use a **second number / test
      line** on another phone or a fresh WhatsApp account as the README recommends.
-   - **"Logged out" right after scanning or entering a code:** stale or half-linked state.
+   - **"Logged out" right after scanning:** stale or half-linked state.
      From `service/` run **`LINK_FRESH=1 npm run link`** once (clears the Upstash snapshot key
-     and local `auth_info/`), then scan the **new** QR or enter the **new** code immediately.
+     and local `auth_info/`), then scan the **new** QR immediately.
      If you only saw "Waiting for QR…" and no QR, that is almost always stale auth — same fix.
-     Or delete the Redis key `wa:auth_info` manually and remove the local `auth_info/` folder,
+     Or run `npm run auth:clear` and remove the local `auth_info/` folder,
      then `npm run link` again.
 
    On success the session is saved to Upstash.

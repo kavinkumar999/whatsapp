@@ -8,7 +8,8 @@
     "link": "node src/link.js",
     "send": "node src/send.js",
     "group-id": "node src/group-id.js",
-    "quotes:seed": "node src/quotes-seed.js"
+    "quotes:seed": "node src/quotes-seed.js",
+    "auth:clear": "node src/auth-clear.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
