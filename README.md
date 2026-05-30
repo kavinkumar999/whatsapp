@@ -177,6 +177,36 @@ export default [
 
 ## Sending (local and CI)
 
+How a single `send` connects to WhatsApp and delivers the current message:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CLI as npm run send
+    participant R as Upstash Redis
+    participant B as Baileys socket
+    participant WA as WhatsApp
+
+    CLI->>R: read message at cursor (wa:messages)
+    CLI->>R: read recipients (wa:recipients)
+    CLI->>R: restore session (wa:auth_info → auth_info/)
+    CLI->>B: connectWithRetry(auth_info/)
+    B->>WA: open WebSocket + auth handshake
+    Note over B,WA: 515 "restart required" after pairing is<br/>normal — the socket is recreated and retried
+    WA-->>B: connection open
+    loop each recipient (throttle 5–30s)
+        B->>WA: sendMessage(jid, text with {{name}})
+        WA-->>B: ack
+    end
+    CLI->>R: advance cursor (only after every send succeeds)
+    Note over CLI,R: finally block — always runs
+    CLI->>R: save mutated session back (wa:auth_info)
+    CLI->>B: sock.end()
+```
+
+If any send throws, the cursor is **not** advanced (the next run retries the same
+message), but the session is still saved in the `finally` block.
+
 | Where | How |
 | --- | --- |
 | **Local** | `npm run send` with `.env` present and lists seeded. |
