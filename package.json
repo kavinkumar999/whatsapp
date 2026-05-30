@@ -9,7 +9,8 @@
     "send": "node src/commands/send.js",
     "check": "node src/commands/check.js",
     "group-id": "node src/commands/group-id.js",
-    "quotes:seed": "node src/commands/quotes-seed.js",
+    "messages:seed": "node src/commands/messages-seed.js",
+    "recipients:seed": "node src/commands/recipients-seed.js",
     "auth:clear": "node src/commands/auth-clear.js"
   },
   "dependencies": {

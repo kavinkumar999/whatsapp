@@ -17,8 +17,8 @@ src/lib/                     shared modules (no side effects beyond import)
   redis.js                     one lazy Upstash client + the Redis key names
   store.js                     read/write the Baileys auth snapshot in Redis
   whatsapp.js                  open a connection (with retry on the 515 handshake)
-  quotes.js                    quote rotation: read next / seed list
-  recipients.js                load + validate recipients.json, build JIDs
+  messages.js                  message rotation: read current / advance / seed
+  recipients.js                load/validate recipients from Redis, build JIDs
   paths.js                     find data files from cwd or repo root
   util.js                      tiny helpers (sleep)
 src/commands/                CLI entrypoints (one per npm script)
@@ -26,12 +26,16 @@ src/commands/                CLI entrypoints (one per npm script)
   send.js                      restore -> send -> save  (supports --dry-run)
   check.js                     validate config without connecting (doctor)
   group-id.js                  print group @g.us JIDs (invite URL or --list)
-  quotes-seed.js               upload/replace the quote list in Upstash
+  messages-seed.js             upload/replace the message list in Upstash
+  recipients-seed.js           upload/replace the recipient list in Upstash
   auth-clear.js                delete the stored session from Upstash
-recipients.json              who to message (number or group jid + optional name)
-quotes.example.json          sample 30-day list; copy to quotes.json to seed
-.github/workflows/send.yml   manual + ~6 AM IST daily (Redis quote rotation)
+recipients.json              seed source for recipients (number/group jid + name)
+messages.example.json        sample 30-day message list; copy to messages.json to seed
+.github/workflows/send.yml   manual + ~6 AM IST daily (Redis message rotation)
 ```
+
+Both the message list **and** the recipient list live in Upstash; the JSON files are
+just editable seed sources you upload with the `*:seed` commands.
 
 Run every command from the repo root (`npm run <script>`, or `node src/commands/<name>.js`).
 
@@ -40,9 +44,10 @@ Run every command from the repo root (`npm run <script>`, or `node src/commands/
 | npm script | What it does |
 | --- | --- |
 | `npm run link` | One-time device pairing; seeds the session into Upstash. |
-| `npm run check` | Validate env, recipients, session, and quotes — **no send**. |
+| `npm run check` | Validate env, session, recipients, and messages — **no send**. |
 | `npm run send` | Send to every recipient. Add `-- --dry-run` to preview only. |
-| `npm run quotes:seed -- <file>` | Upload a JSON array of quote strings to Upstash. |
+| `npm run messages:seed -- <file>` | Upload the message list (JSON array of strings) to Upstash. |
+| `npm run recipients:seed -- <file>` | Upload the recipient list to Upstash. |
 | `npm run group-id -- --list` | List the linked account's group JIDs. |
 | `npm run group-id -- <invite-url>` | Resolve a group JID from an invite link. |
 | `npm run auth:clear` | Delete the stored session from Upstash. |
@@ -72,12 +77,20 @@ Run every command from the repo root (`npm run <script>`, or `node src/commands/
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
 
-5. **Edit `recipients.json`** with the real numbers / group JIDs (see below).
+5. **Seed the recipient and message lists into Upstash:**
+
+   ```bash
+   # edit recipients.json (see below), then upload it:
+   npm run recipients:seed
+
+   cp messages.example.json messages.json   # edit messages.json, then upload it:
+   npm run messages:seed
+   ```
 
 6. **Verify everything** before the first real send:
 
    ```bash
-   npm run check               # env + recipients + session + message/quotes
+   npm run check               # env + session + recipients + messages
    npm run send -- --dry-run   # prints exactly what would be sent, sends nothing
    ```
 
@@ -100,7 +113,9 @@ Then scan the **new** QR immediately (it refreshes every few seconds). Other tip
 
 ## Recipients
 
-`recipients.json` is a JSON array. Each entry is a bare string or an object:
+The recipient list is stored in Upstash (key `wa:recipients`). You edit it as a JSON
+file and upload it with `npm run recipients:seed`; `send` then reads it from Upstash.
+Each entry is a bare string or an object:
 
 ```json
 [
@@ -113,6 +128,10 @@ Then scan the **new** QR immediately (it refreshes every few seconds). Other tip
   JID ending in `@g.us`.
 - **`name`** — optional; `{{name}}` in the message is replaced with it (blank if absent).
 
+Re-run `npm run recipients:seed` whenever you change the list. By default it uploads
+`recipients.json` from the current directory or repo root; pass a path
+(`npm run recipients:seed -- path/to/file.json`) or set `RECIPIENTS_FILE` to override.
+
 **Groups:** the linked account must **already be a member** of the group, and the JID
 is the long `…@g.us` id — **not** the `https://chat.whatsapp.com/…` invite link. Find the
 JID with (run after `npm run link`):
@@ -122,40 +141,40 @@ npm run group-id -- --list                                   # you're already in
 npm run group-id -- "https://chat.whatsapp.com/INVITE_CODE"  # resolve from an invite link
 ```
 
-## Daily quotes (scheduled sends)
+## The message list (Redis)
 
-The workflow's **6 AM IST** cron (`30 0 * * *` UTC — IST is UTC+5:30, no DST) runs with
-`MESSAGE_SOURCE=redis`: it reads a **JSON array of strings** from Upstash key `wa:quotes`,
-sends the string at the current cursor (`wa:quotes:cursor`), then advances the cursor,
-wrapping after the last item. Change the list anytime; the cursor stays valid modulo the
-new length.
+Every send — manual or scheduled — uses the message list stored in Upstash; there is
+no per-send message text. The list is a **JSON array of strings** at key `wa:messages`,
+and a **cursor** (`wa:messages:cursor`) is the index of the next message to send. Each
+run reads the message at the cursor, sends it to every recipient, and **then** advances
+the cursor (wrapping after the last item). Advancing only after a successful send means
+a failed run retries the same message instead of skipping it. The cursor stays valid
+modulo the list length, so you can change the list size anytime.
 
 Seed or refresh the list from a file:
 
 ```bash
-cp quotes.example.json quotes.json   # edit quotes.json, then:
-npm run quotes:seed                  # (or: npm run quotes:seed -- path/to/quotes.json)
+cp messages.example.json messages.json   # edit messages.json, then:
+npm run messages:seed                     # (or: npm run messages:seed -- path/to/messages.json)
 ```
 
-Add `QUOTES_RESET_CURSOR=1` to also reset the cursor to 0 so the next send starts at the
-first quote. Override the keys with `UPSTASH_QUOTES_KEY` / `UPSTASH_QUOTES_CURSOR_KEY`.
+Add `MESSAGES_RESET_CURSOR=1` to also reset the cursor to 0 so the next send starts at the
+first message. Override the keys with `UPSTASH_MESSAGES_KEY` / `UPSTASH_MESSAGES_CURSOR_KEY`.
 
 ## Sending
 
-- **Manual:** Actions → *Send WhatsApp messages* → *Run workflow* → type a message
-  (uses the form text, not the Redis quotes).
-- **Scheduled:** ~**6:00 IST** daily. Uses the next quote and advances the cursor.
-  (GitHub cron is best-effort and can run a few minutes late.)
-- **Local:** with `.env` set, choose a source — set `MESSAGE`, or set
-  `MESSAGE_SOURCE=redis` (quotes must be seeded) — then:
+- **Manual:** Actions → *Send WhatsApp messages* → *Run workflow*. Sends the message at
+  the current cursor and advances it (same as the scheduled run) — handy for testing.
+- **Scheduled:** ~**6:00 IST** daily (`30 0 * * *` UTC; GitHub cron is best-effort and can
+  run a few minutes late).
+- **Local:** with `.env` set and the list seeded:
 
   ```bash
   npm run send                   # or: node src/commands/send.js
   ```
 
-  Append `-- --dry-run` (or set `DRY_RUN=1`) to print the resolved recipients and
-  message **without connecting or sending**. A dry run with `MESSAGE_SOURCE=redis`
-  peeks the next quote and does **not** advance the cursor.
+  Append `-- --dry-run` (or set `DRY_RUN=1`) to print the current message and the
+  resolved recipients **without connecting, sending, or advancing the cursor**.
 
 ## Notes & limits
 

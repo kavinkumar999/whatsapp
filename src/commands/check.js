@@ -2,13 +2,13 @@
 //
 //   npm run check
 //
-// Verifies: Upstash credentials, recipients.json, a stored session, the quote
-// list + cursor, and the message source — then prints a pass/fail summary.
-// Exits non-zero if anything that would break a real send is wrong.
+// Verifies: Upstash credentials, a stored session, the recipient list, and the
+// message list + cursor — then prints a pass/fail summary. Exits non-zero if
+// anything that would break a real send is wrong.
 
 import { requireUpstashEnv } from '../lib/env.js';
-import { getNextQuote } from '../lib/quotes.js';
-import { loadRecipients, personalize } from '../lib/recipients.js';
+import { getCurrentMessage } from '../lib/messages.js';
+import { loadRecipients } from '../lib/recipients.js';
 import { authSnapshotKey, hasStoredSession } from '../lib/store.js';
 
 const results = [];
@@ -39,27 +39,16 @@ async function main() {
     return `present at key "${authSnapshotKey}"`;
   });
 
-  await step('recipients.json', async () => {
-    const { file, recipients } = await loadRecipients(process.env.RECIPIENTS_FILE);
-    return `${recipients.length} recipient(s) from ${file}`;
+  await step('Recipients', async () => {
+    const recipients = await loadRecipients();
+    return `${recipients.length} recipient(s) in Upstash`;
   });
 
-  // Message: either a literal MESSAGE, or the rotating Redis quotes.
-  const source = (process.env.MESSAGE_SOURCE || 'env').toLowerCase();
-  if (source === 'redis') {
-    await step('Quotes (MESSAGE_SOURCE=redis)', async () => {
-      const { text, index, count } = await getNextQuote({ advance: false }); // peek
-      const preview = text.length > 60 ? `${text.slice(0, 57)}...` : text;
-      return `${count} quote(s); next is #${index + 1}: "${preview}"`;
-    });
-  } else {
-    await step('Message (MESSAGE)', async () => {
-      if (!process.env.MESSAGE?.trim()) {
-        throw new Error('MESSAGE is empty — set it, or use MESSAGE_SOURCE=redis');
-      }
-      return `"${personalize(process.env.MESSAGE, {})}"`;
-    });
-  }
+  await step('Message list', async () => {
+    const { text, index, count } = await getCurrentMessage(); // peek, never advances
+    const preview = text.length > 60 ? `${text.slice(0, 57)}...` : text;
+    return `${count} message(s); next is #${index + 1}: "${preview}"`;
+  });
 
   report();
 }

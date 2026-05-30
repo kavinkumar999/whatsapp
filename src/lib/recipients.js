@@ -1,10 +1,10 @@
-// Load and validate recipients.json, and turn entries into WhatsApp JIDs.
+// Recipients are stored in Upstash Redis (key wa:recipients) and seeded from a
+// recipients.json file with `npm run recipients:seed`.
 //
 // An entry is either a bare string ("919876543210" or "...@g.us") or an object
 // { "to": "...", "name": "optional" }. `name` fills in {{name}} in the message.
 
-import { readFile } from 'fs/promises';
-import { resolveDataFile } from './paths.js';
+import { KEYS, redis } from './redis.js';
 
 /**
  * Convert a recipient address to a WhatsApp JID.
@@ -38,30 +38,38 @@ function normalizeEntry(entry, index) {
 }
 
 /**
- * Load, parse and validate recipients.json.
- * @param {string} [override] - explicit path (CLI/env); otherwise cwd or repo root.
- * @returns {Promise<{ file: string, recipients: Array<{to: string, name?: string, jid: string}> }>}
+ * Validate a raw array of entries (e.g. parsed from a file).
+ * @returns {Array<{to: string, name?: string, jid: string}>}
  */
-export async function loadRecipients(override) {
-  const file = resolveDataFile('recipients.json', override);
-  if (!file) {
+export function validateRecipients(list) {
+  if (!Array.isArray(list) || list.length === 0) {
+    throw new Error('recipients must be a non-empty JSON array');
+  }
+  return list.map(normalizeEntry);
+}
+
+/**
+ * Load and validate recipients from Redis (key wa:recipients).
+ * @returns {Promise<Array<{to: string, name?: string, jid: string}>>}
+ */
+export async function loadRecipients() {
+  const list = await redis().get(KEYS.recipients);
+  if (!Array.isArray(list) || list.length === 0) {
     throw new Error(
-      [
-        'recipients.json not found (looked in the current directory and the repo root).',
-        'Create it, or set RECIPIENTS_FILE to its path. See the README for the format.',
-      ].join('\n')
+      `No recipients in Upstash at key "${KEYS.recipients}". Seed them with \`npm run recipients:seed\` (see README).`
     );
   }
+  return validateRecipients(list);
+}
 
-  let list;
-  try {
-    list = JSON.parse(await readFile(file, 'utf-8'));
-  } catch (err) {
-    throw new Error(`Could not parse ${file} as JSON: ${err.message}`);
-  }
-  if (!Array.isArray(list) || list.length === 0) {
-    throw new Error(`${file} must be a non-empty JSON array`);
-  }
-
-  return { file, recipients: list.map(normalizeEntry) };
+/**
+ * Replace the recipient list in Redis. Stores the cleaned { to, name } entries
+ * (the jid is derived on read, so it isn't persisted).
+ * @param {Array<{to: string, name?: string}>} entries - already validated.
+ * @returns {Promise<number>} how many entries were stored.
+ */
+export async function seedRecipients(entries) {
+  const stored = entries.map(({ to, name }) => (name ? { to, name } : { to }));
+  await redis().set(KEYS.recipients, stored);
+  return stored.length;
 }

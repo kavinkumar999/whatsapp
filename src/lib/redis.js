@@ -12,10 +12,12 @@ import { Redis } from '@upstash/redis';
 export const KEYS = {
   /** JSON snapshot of the Baileys auth folder. */
   auth: process.env.UPSTASH_AUTH_KEY || 'wa:auth_info',
-  /** JSON array of quote strings for the daily rotation. */
-  quotes: process.env.UPSTASH_QUOTES_KEY || 'wa:quotes',
-  /** Integer index of the next quote to send. */
-  quotesCursor: process.env.UPSTASH_QUOTES_CURSOR_KEY || 'wa:quotes:cursor',
+  /** JSON array of message strings for the daily rotation. */
+  messages: process.env.UPSTASH_MESSAGES_KEY || 'wa:messages',
+  /** Integer index of the next message to send. */
+  messagesCursor: process.env.UPSTASH_MESSAGES_CURSOR_KEY || 'wa:messages:cursor',
+  /** JSON array of recipients ({ to, name? } or bare strings). */
+  recipients: process.env.UPSTASH_RECIPIENTS_KEY || 'wa:recipients',
 };
 
 let client;

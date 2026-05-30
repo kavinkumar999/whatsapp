@@ -1,4 +1,4 @@
-// Locate data files (recipients.json, quotes.json) whether a command is run from
+// Locate data files (recipients.json, messages.json) whether a command is run from
 // the repo root or a subdirectory.
 
 import { existsSync } from 'fs';

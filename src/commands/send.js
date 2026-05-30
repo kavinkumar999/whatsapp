@@ -1,18 +1,23 @@
 // CI / local entrypoint: restore session -> connect -> send to recipients -> save.
 //
+// Both the message and the recipients come from Upstash: the message is the one
+// at the current cursor (key wa:messages / cursor wa:messages:cursor) and the
+// recipient list is key wa:recipients. The same message goes to every recipient;
+// the cursor is advanced only AFTER the send succeeds, so a failed run retries the
+// same message rather than skipping it.
+//
 // Baileys mutates the session on every connection, so we ALWAYS save it back in a
 // finally block — even if a send fails — or the device will eventually log out.
 //
 // Required env: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
-//               plus either MESSAGE (plain text) or MESSAGE_SOURCE=redis (rotating quotes).
-// Optional env: RECIPIENTS_FILE, AUTH_DIR, MIN_DELAY_MS / MAX_DELAY_MS (throttle),
+// Optional env: AUTH_DIR, MIN_DELAY_MS / MAX_DELAY_MS (throttle),
 //               DRY_RUN=1 (resolve + print the plan, but don't connect or send).
 //
 // Usage: node src/commands/send.js [--dry-run]
 
 import path from 'path';
 import { requireUpstashEnv } from '../lib/env.js';
-import { getNextQuote } from '../lib/quotes.js';
+import { advanceCursor, getCurrentMessage } from '../lib/messages.js';
 import { loadRecipients, personalize } from '../lib/recipients.js';
 import { authSnapshotKey, restoreAuthDir, saveAuthDir } from '../lib/store.js';
 import { sleep } from '../lib/util.js';
@@ -26,35 +31,20 @@ const DRY_RUN = process.argv.includes('--dry-run') || process.env.DRY_RUN === '1
 const randomDelay = () =>
   Math.floor(MIN_DELAY_MS + Math.random() * Math.max(0, MAX_DELAY_MS - MIN_DELAY_MS));
 
-/** Resolve the message text from MESSAGE or the Redis quote rotation. */
-async function resolveMessage({ advanceCursor }) {
-  const source = (process.env.MESSAGE_SOURCE || 'env').toLowerCase();
-  if (source === 'redis') {
-    const { text } = await getNextQuote({ advance: advanceCursor });
-    return text;
-  }
-  const message = process.env.MESSAGE;
-  if (!message?.trim()) {
-    throw new Error(
-      'Set MESSAGE, or set MESSAGE_SOURCE=redis with a seeded quote list in Upstash (see README).'
-    );
-  }
-  return message;
-}
-
 async function main() {
   requireUpstashEnv();
 
-  // In a dry run, peek the quote (don't advance the cursor) so re-runs are stable.
-  const message = await resolveMessage({ advanceCursor: !DRY_RUN });
-  const { file, recipients } = await loadRecipients(process.env.RECIPIENTS_FILE);
+  // Peek the current message; we advance the cursor only after a successful send.
+  const { text, index, count } = await getCurrentMessage();
+  const recipients = await loadRecipients();
 
   if (DRY_RUN) {
-    console.log(`DRY RUN — nothing will be sent.\n`);
-    console.log(`recipients (${recipients.length}) from ${file}:`);
+    console.log('DRY RUN — nothing will be sent, cursor not advanced.\n');
+    console.log(`message #${index + 1}/${count}: "${text}"\n`);
+    console.log(`recipients (${recipients.length}) from Upstash:`);
     for (const r of recipients) {
       console.log(`  -> ${r.jid}`);
-      console.log(`     ${personalize(message, r)}`);
+      console.log(`     ${personalize(text, r)}`);
     }
     return;
   }
@@ -71,7 +61,7 @@ async function main() {
   try {
     for (let i = 0; i < recipients.length; i++) {
       const r = recipients[i];
-      await sock.sendMessage(r.jid, { text: personalize(message, r) });
+      await sock.sendMessage(r.jid, { text: personalize(text, r) });
       console.log(`sent -> ${r.jid}`);
 
       if (i < recipients.length - 1) {
@@ -80,6 +70,10 @@ async function main() {
         await sleep(wait);
       }
     }
+
+    // Every recipient got the message — advance the cursor for the next run.
+    const next = await advanceCursor(index, count);
+    console.log(`sent message #${index + 1}/${count}; cursor advanced to ${next}`);
   } finally {
     // ALWAYS save the (now mutated) session back, even if a send failed.
     await sleep(1_500); // let any in-flight creds.update flush to disk
