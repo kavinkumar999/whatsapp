@@ -1,4 +1,4 @@
-// Print WhatsApp group JIDs (@g.us) to paste into recipients.json.
+// Print WhatsApp group JIDs (@g.us) to paste into src/data/recipients.js.
 //
 //   npm run group-id -- --list
 //       List every group the linked account is in.
@@ -38,7 +38,7 @@ async function listGroups(sock) {
     console.log('No groups returned (empty list or still syncing). Try again in a few seconds.');
     return;
   }
-  console.log('Groups your linked account is in (use the id in recipients.json "to"):\n');
+  console.log('Groups your linked account is in (use the id as a "to" in src/data/recipients.js):\n');
   for (const g of rows.sort((a, b) => (a.subject || '').localeCompare(b.subject || ''))) {
     console.log(`  ${g.id}`);
     console.log(`    name: ${g.subject || '(no subject)'}\n`);
@@ -51,7 +51,7 @@ async function resolveInvite(sock, inviteArg) {
   if (!meta?.id) {
     throw new Error('Unexpected response: no group id. Invite may be invalid or expired.');
   }
-  console.log('\nUse this value in recipients.json as "to":\n');
+  console.log('\nUse this value as a "to" in src/data/recipients.js:\n');
   console.log(`  "${meta.id}"\n`);
   console.log(`Group name (from invite): ${meta.subject || '(unknown)'}\n`);
 }

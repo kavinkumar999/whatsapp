@@ -19,23 +19,23 @@ src/lib/                     shared modules (no side effects beyond import)
   whatsapp.js                  open a connection (with retry on the 515 handshake)
   messages.js                  message rotation: read current / advance / seed
   recipients.js                load/validate recipients from Redis, build JIDs
-  paths.js                     find data files from cwd or repo root
   util.js                      tiny helpers (sleep)
+src/data/                    editable lists you push to Upstash with *:seed
+  messages.js                  the message list (array of strings)
+  recipients.js                the recipient list (numbers / group jids)
 src/commands/                CLI entrypoints (one per npm script)
   link.js                      ONE-TIME local pairing -> seeds Upstash
   send.js                      restore -> send -> save  (supports --dry-run)
   check.js                     validate config without connecting (doctor)
   group-id.js                  print group @g.us JIDs (invite URL or --list)
-  messages-seed.js             upload/replace the message list in Upstash
-  recipients-seed.js           upload/replace the recipient list in Upstash
+  messages-seed.js             push src/data/messages.js to Upstash
+  recipients-seed.js           push src/data/recipients.js to Upstash
   auth-clear.js                delete the stored session from Upstash
-recipients.json              seed source for recipients (number/group jid + name)
-messages.example.json        sample 30-day message list; copy to messages.json to seed
 .github/workflows/send.yml   manual + ~6 AM IST daily (Redis message rotation)
 ```
 
-Both the message list **and** the recipient list live in Upstash; the JSON files are
-just editable seed sources you upload with the `*:seed` commands.
+Both the message list **and** the recipient list live in Upstash. You edit them as
+plain arrays in `src/data/*.js` and push them with the `*:seed` commands.
 
 Run every command from the repo root (`npm run <script>`, or `node src/commands/<name>.js`).
 
@@ -46,8 +46,8 @@ Run every command from the repo root (`npm run <script>`, or `node src/commands/
 | `npm run link` | One-time device pairing; seeds the session into Upstash. |
 | `npm run check` | Validate env, session, recipients, and messages — **no send**. |
 | `npm run send` | Send to every recipient. Add `-- --dry-run` to preview only. |
-| `npm run messages:seed -- <file>` | Upload the message list (JSON array of strings) to Upstash. |
-| `npm run recipients:seed -- <file>` | Upload the recipient list to Upstash. |
+| `npm run messages:seed` | Push `src/data/messages.js` to Upstash. |
+| `npm run recipients:seed` | Push `src/data/recipients.js` to Upstash. |
 | `npm run group-id -- --list` | List the linked account's group JIDs. |
 | `npm run group-id -- <invite-url>` | Resolve a group JID from an invite link. |
 | `npm run auth:clear` | Delete the stored session from Upstash. |
@@ -77,13 +77,11 @@ Run every command from the repo root (`npm run <script>`, or `node src/commands/
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
 
-5. **Seed the recipient and message lists into Upstash:**
+5. **Edit the lists and push them to Upstash:**
 
    ```bash
-   # edit recipients.json (see below), then upload it:
+   # edit src/data/recipients.js and src/data/messages.js (see below), then:
    npm run recipients:seed
-
-   cp messages.example.json messages.json   # edit messages.json, then upload it:
    npm run messages:seed
    ```
 
@@ -113,24 +111,23 @@ Then scan the **new** QR immediately (it refreshes every few seconds). Other tip
 
 ## Recipients
 
-The recipient list is stored in Upstash (key `wa:recipients`). You edit it as a JSON
-file and upload it with `npm run recipients:seed`; `send` then reads it from Upstash.
-Each entry is a bare string or an object:
+The recipient list is stored in Upstash (key `wa:recipients`). You edit it as an array
+in **`src/data/recipients.js`** and push it with `npm run recipients:seed`; `send` then
+reads it from Upstash. Each entry is a bare string or an object:
 
-```json
-[
-  { "to": "919876543210", "name": "Asha" },
-  { "to": "120363123456789012@g.us", "name": "Team chat" }
-]
+```js
+// src/data/recipients.js
+export default [
+  { to: '919876543210', name: 'Asha' },
+  { to: '120363123456789012@g.us', name: 'Team chat' },
+];
 ```
 
 - **`to`** — an international number (digits only, e.g. `919876543210`) **or** a group
   JID ending in `@g.us`.
 - **`name`** — optional; `{{name}}` in the message is replaced with it (blank if absent).
 
-Re-run `npm run recipients:seed` whenever you change the list. By default it uploads
-`recipients.json` from the current directory or repo root; pass a path
-(`npm run recipients:seed -- path/to/file.json`) or set `RECIPIENTS_FILE` to override.
+Re-run `npm run recipients:seed` whenever you change the list.
 
 **Groups:** the linked account must **already be a member** of the group, and the JID
 is the long `…@g.us` id — **not** the `https://chat.whatsapp.com/…` invite link. Find the
@@ -144,18 +141,17 @@ npm run group-id -- "https://chat.whatsapp.com/INVITE_CODE"  # resolve from an i
 ## The message list (Redis)
 
 Every send — manual or scheduled — uses the message list stored in Upstash; there is
-no per-send message text. The list is a **JSON array of strings** at key `wa:messages`,
-and a **cursor** (`wa:messages:cursor`) is the index of the next message to send. Each
-run reads the message at the cursor, sends it to every recipient, and **then** advances
-the cursor (wrapping after the last item). Advancing only after a successful send means
-a failed run retries the same message instead of skipping it. The cursor stays valid
-modulo the list length, so you can change the list size anytime.
-
-Seed or refresh the list from a file:
+no per-send message text. The list is an **array of strings** you edit in
+**`src/data/messages.js`** and push with `npm run messages:seed`, stored at key
+`wa:messages`. A **cursor** (`wa:messages:cursor`) is the index of the next message to
+send. Each run reads the message at the cursor, sends it to every recipient, and
+**then** advances the cursor (wrapping after the last item). Advancing only after a
+successful send means a failed run retries the same message instead of skipping it. The
+cursor stays valid modulo the list length, so you can change the list size anytime.
 
 ```bash
-cp messages.example.json messages.json   # edit messages.json, then:
-npm run messages:seed                     # (or: npm run messages:seed -- path/to/messages.json)
+# edit src/data/messages.js, then:
+npm run messages:seed
 ```
 
 Add `MESSAGES_RESET_CURSOR=1` to also reset the cursor to 0 so the next send starts at the

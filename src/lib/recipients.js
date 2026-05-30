@@ -1,5 +1,5 @@
-// Recipients are stored in Upstash Redis (key wa:recipients) and seeded from a
-// recipients.json file with `npm run recipients:seed`.
+// Recipients are stored in Upstash Redis (key wa:recipients) and seeded from
+// src/data/recipients.js with `npm run recipients:seed`.
 //
 // An entry is either a bare string ("919876543210" or "...@g.us") or an object
 // { "to": "...", "name": "optional" }. `name` fills in {{name}} in the message.
@@ -38,12 +38,12 @@ function normalizeEntry(entry, index) {
 }
 
 /**
- * Validate a raw array of entries (e.g. parsed from a file).
+ * Validate a raw array of entries (e.g. from src/data/recipients.js).
  * @returns {Array<{to: string, name?: string, jid: string}>}
  */
 export function validateRecipients(list) {
   if (!Array.isArray(list) || list.length === 0) {
-    throw new Error('recipients must be a non-empty JSON array');
+    throw new Error('recipients must be a non-empty array');
   }
   return list.map(normalizeEntry);
 }
