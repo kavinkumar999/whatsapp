@@ -1,0 +1,42 @@
+name: Send WhatsApp messages
+
+on:
+  # Manual trigger: type a message. Scheduled (~6 AM IST): next line from Upstash wa:quotes + cursor.
+  workflow_dispatch:
+    inputs:
+      message:
+        description: "Message text ({{name}} is replaced per recipient)"
+        required: true
+        default: "Hello {{name}} 👋 — automated message."
+  # Scheduled trigger: 00:30 UTC = 06:00 IST (India, UTC+5:30, no DST).
+  # GitHub cron is best-effort and can be delayed/skipped.
+  schedule:
+    - cron: "30 0 * * *"
+
+# Never let two runs touch the Upstash session at the same time — overlapping
+# runs would race and clobber each other's saved auth state.
+concurrency:
+  group: whatsapp-send
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --prefix service
+
+      - name: Send messages
+        env:
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          # Manual run: message from the workflow form. Scheduled: rotate quote from Redis.
+          MESSAGE_SOURCE: ${{ github.event_name == 'schedule' && 'redis' || 'env' }}
+          MESSAGE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.message || '' }}
+        run: node service/src/send.js
