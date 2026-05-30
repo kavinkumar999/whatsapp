@@ -6,12 +6,15 @@
   "description": "Phase 1: send WhatsApp messages via Baileys, triggered from GitHub Actions, with the session persisted in Upstash Redis.",
   "scripts": {
     "link": "node src/link.js",
-    "send": "node src/send.js"
+    "send": "node src/send.js",
+    "group-id": "node src/group-id.js"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "@upstash/redis": "^1.34.3",
     "@whiskeysockets/baileys": "^6.7.9",
-    "pino": "^9.5.0"
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
   },
   "engines": {
     "node": ">=20"

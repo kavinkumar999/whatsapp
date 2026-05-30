@@ -1,18 +1,45 @@
+import './load-env.js';
+
 // CI entrypoint: restore session -> connect -> send to recipients -> save session.
 //
-// Run from the repo root:  node service/src/send.js
+// Works from repo root or from service/: default recipients path is ./recipients.json
+// in cwd, or ../recipients.json next to this package (repo root layout).
+//
 // Required env:  MESSAGE, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
-// Optional env:  RECIPIENTS_FILE (default: recipients.json), AUTH_DIR,
+// Optional env:  RECIPIENTS_FILE (path to JSON list), AUTH_DIR,
 //                MIN_DELAY_MS / MAX_DELAY_MS (throttle between messages).
 
 import { DisconnectReason } from '@whiskeysockets/baileys';
+import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { restoreAuthDir, saveAuthDir } from './store.js';
 import { openOnce } from './whatsapp.js';
 
 const AUTH_DIR = process.env.AUTH_DIR || path.resolve(process.cwd(), 'auth_info');
-const RECIPIENTS_FILE = process.env.RECIPIENTS_FILE || 'recipients.json';
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+/** Repo root when this app lives in service/src/ (one level up from service/). */
+const REPO_ROOT = path.resolve(SCRIPT_DIR, '../..');
+
+function resolveRecipientsPath() {
+  const env = process.env.RECIPIENTS_FILE;
+  if (env) {
+    return path.isAbsolute(env) ? env : path.resolve(process.cwd(), env);
+  }
+  const cwdCandidate = path.resolve(process.cwd(), 'recipients.json');
+  const repoCandidate = path.resolve(REPO_ROOT, 'recipients.json');
+  if (existsSync(cwdCandidate)) return cwdCandidate;
+  if (existsSync(repoCandidate)) return repoCandidate;
+  throw new Error(
+    [
+      'recipients.json not found. Tried:',
+      `  ${cwdCandidate}`,
+      `  ${repoCandidate}`,
+      'Create the file, set RECIPIENTS_FILE, or run from the repo root.',
+    ].join('\n')
+  );
+}
 const MIN_DELAY_MS = Number(process.env.MIN_DELAY_MS || 5_000);
 const MAX_DELAY_MS = Number(process.env.MAX_DELAY_MS || 30_000);
 const MAX_CONNECT_ATTEMPTS = 5;
@@ -32,10 +59,10 @@ function personalize(template, recipient) {
 }
 
 async function loadRecipients() {
-  const file = path.resolve(process.cwd(), RECIPIENTS_FILE);
+  const file = resolveRecipientsPath();
   const list = JSON.parse(await readFile(file, 'utf-8'));
   if (!Array.isArray(list) || list.length === 0) {
-    throw new Error(`${RECIPIENTS_FILE} must be a non-empty JSON array`);
+    throw new Error(`${file} must be a non-empty JSON array`);
   }
   return list;
 }

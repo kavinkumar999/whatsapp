@@ -12,10 +12,16 @@ import { Redis } from '@upstash/redis';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-const AUTH_KEY = process.env.UPSTASH_AUTH_KEY || 'wa:auth_info';
+/** Redis JSON key for the Baileys auth folder snapshot (for docs / errors). */
+export const authSnapshotKey = process.env.UPSTASH_AUTH_KEY || 'wa:auth_info';
 
 // Reads UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN from the environment.
 const redis = Redis.fromEnv();
+
+/** Remove the stored session from Upstash (e.g. before a clean `npm run link`). */
+export async function clearAuthSnapshot() {
+  await redis.del(authSnapshotKey);
+}
 
 /**
  * Restore the auth folder from Redis into `dir`.
@@ -23,7 +29,7 @@ const redis = Redis.fromEnv();
  */
 export async function restoreAuthDir(dir) {
   await fs.mkdir(dir, { recursive: true });
-  const snapshot = await redis.get(AUTH_KEY); // { filename: contents } | null
+  const snapshot = await redis.get(authSnapshotKey); // { filename: contents } | null
   if (!snapshot || typeof snapshot !== 'object') return false;
 
   for (const [name, contents] of Object.entries(snapshot)) {
@@ -42,5 +48,5 @@ export async function saveAuthDir(dir) {
   for (const name of files) {
     snapshot[name] = await fs.readFile(path.join(dir, name), 'utf-8');
   }
-  await redis.set(AUTH_KEY, snapshot);
+  await redis.set(authSnapshotKey, snapshot);
 }

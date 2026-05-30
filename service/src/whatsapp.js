@@ -7,6 +7,7 @@
 // caller can decide whether to retry.
 
 import makeWASocket, {
+  Browsers,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
@@ -21,9 +22,12 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
  * @param {(sock: any) => Promise<void>} [onSocket] - optional hook called right
  *        after socket creation, before the connection opens (used by `link` to
  *        request a pairing code).
+ * @param {{ onConnectionUpdate?: (update: any) => void }} [options] - e.g. `link`
+ *        passes a handler to print QR codes from `update.qr`.
  * @returns {Promise<{ sock: any, status: 'open' | 'close', code?: number }>}
  */
-export async function openOnce(authDir, onSocket) {
+export async function openOnce(authDir, onSocket, options) {
+  const { onConnectionUpdate } = options ?? {};
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
 
@@ -35,7 +39,9 @@ export async function openOnce(authDir, onSocket) {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
-    browser: ['WhatsApp-Automation', 'Chrome', '1.0.0'],
+    // Match a normal WhatsApp Web client (Baileys default). A custom label like
+    // "WhatsApp-Automation" is easy for the server to flag and reject during QR link.
+    browser: Browsers.appropriate('Chrome'),
   });
 
   // Persist credential changes to the folder as they happen.
@@ -45,6 +51,7 @@ export async function openOnce(authDir, onSocket) {
 
   return await new Promise((resolve) => {
     sock.ev.on('connection.update', (update) => {
+      onConnectionUpdate?.(update);
       const { connection, lastDisconnect } = update;
       if (connection === 'open') {
         resolve({ sock, status: 'open' });
