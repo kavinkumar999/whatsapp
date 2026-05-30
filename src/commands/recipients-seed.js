@@ -7,6 +7,7 @@
 //      UPSTASH_RECIPIENTS_KEY (override the default key, wa:recipients)
 
 import recipients from '../data/recipients.js';
+import { printCliFailure } from '../lib/cli-print.js';
 import { requireUpstashEnv } from '../lib/env.js';
 import { seedRecipients, validateRecipients } from '../lib/recipients.js';
 
@@ -19,6 +20,5 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err.message || err);
-  process.exit(1);
+  printCliFailure(err, { title: 'recipients:seed failed', titleIcon: '📇' });
 });

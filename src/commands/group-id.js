@@ -8,6 +8,7 @@
 // Requires the same Upstash session as `send` (run `npm run link` once first).
 
 import path from 'path';
+import { printCliFailure } from '../lib/cli-print.js';
 import { requireUpstashEnv } from '../lib/env.js';
 import { restoreAuthDir, saveAuthDir } from '../lib/store.js';
 import { sleep } from '../lib/util.js';
@@ -63,7 +64,6 @@ async function main() {
 
   if (!listMode && !inviteArg) {
     console.log(USAGE);
-    process.exitCode = 1;
     return;
   }
 
@@ -90,9 +90,6 @@ async function main() {
   }
 }
 
-main()
-  .then(() => process.exit(process.exitCode || 0))
-  .catch((err) => {
-    console.error(err.message || err);
-    process.exit(1);
-  });
+main().catch((err) => {
+  printCliFailure(err, { title: 'group-id failed', titleIcon: '👥' });
+});

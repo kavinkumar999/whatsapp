@@ -16,6 +16,7 @@
 // Usage: node src/commands/send.js [--dry-run]
 
 import path from 'path';
+import { printCliFailure } from '../lib/cli-print.js';
 import { requireUpstashEnv } from '../lib/env.js';
 import { advanceCursor, getCurrentMessage } from '../lib/messages.js';
 import { loadRecipients, personalize } from '../lib/recipients.js';
@@ -83,9 +84,6 @@ async function main() {
   }
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err.message || err);
-    process.exit(1);
-  });
+main().catch((err) => {
+  printCliFailure(err, { title: 'Send failed', titleIcon: '📤' });
+});

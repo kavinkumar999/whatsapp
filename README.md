@@ -40,7 +40,7 @@ npm run recipients:seed
 npm run messages:seed
 
 # 5. Sanity-check and preview without sending
-npm run check
+npm run doctor
 npm run send -- --dry-run
 
 # 6. (CI) Add UPSTASH_REDIS_REST_URL / _TOKEN as GitHub Actions secrets
@@ -53,13 +53,13 @@ Run every command from the repo root — `npm run <script>` or `node src/command
 | npm script | What it does |
 | --- | --- |
 | `npm run link` | One-time device pairing; seeds the session into Upstash. |
-| `npm run check` | Validate env, session, recipients, and messages — **no send**. |
+| `npm run doctor` | Validate env, session, recipients, and messages — **no send**. |
 | `npm run send` | Send the current message to every recipient. Add `-- --dry-run` to preview. |
 | `npm run messages:seed` | Push `src/data/messages.js` to Upstash. |
 | `npm run recipients:seed` | Push `src/data/recipients.js` to Upstash. |
 | `npm run group-id -- --list` | List the linked account's group JIDs. |
 | `npm run group-id -- <invite-url>` | Resolve a group JID from an invite link. |
-| `npm run auth:clear` | Delete the stored session from Upstash. |
+| `npm run auth:clear` | Remove the session from Upstash **and** delete local `./auth_info`. |
 
 ## Configuration
 
@@ -107,7 +107,7 @@ required secrets.
 5. **Edit the lists** (`src/data/recipients.js`, `src/data/messages.js`) and push them:
    `npm run recipients:seed && npm run messages:seed`.
 
-6. **Verify** before the first real send: `npm run check` then `npm run send -- --dry-run`.
+6. **Verify** before the first real send: `npm run doctor` then `npm run send -- --dry-run`.
 
 ### If linking fails or no usable QR appears
 
@@ -123,8 +123,7 @@ Then scan the **new** QR immediately (it refreshes every few seconds). Other tip
   itself — use a **second number / test line** or a fresh account.
 - If you hit a device limit, remove old **Chrome/desktop** entries under
   WhatsApp → Linked devices.
-- `npm run auth:clear` deletes the Redis snapshot only; also `rm -rf auth_info` if a local
-  folder is lingering, then `npm run link` again.
+- `npm run auth:clear` clears the Redis snapshot **and** removes local `./auth_info`; then run `npm run link` again.
 
 ## Editing the lists
 
@@ -210,7 +209,7 @@ src/data/                    editable lists you push to Upstash with *:seed
 src/commands/                CLI entrypoints (one per npm script)
   link.js                      ONE-TIME local pairing -> seeds Upstash
   send.js                      restore -> send -> save  (supports --dry-run)
-  check.js                     validate config without connecting (doctor)
+  doctor.js                    validate config without connecting
   group-id.js                  print group @g.us JIDs (invite URL or --list)
   messages-seed.js             push src/data/messages.js to Upstash
   recipients-seed.js           push src/data/recipients.js to Upstash

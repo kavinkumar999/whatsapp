@@ -7,7 +7,7 @@
   "scripts": {
     "link": "node src/commands/link.js",
     "send": "node src/commands/send.js",
-    "check": "node src/commands/check.js",
+    "doctor": "node src/commands/doctor.js",
     "group-id": "node src/commands/group-id.js",
     "messages:seed": "node src/commands/messages-seed.js",
     "recipients:seed": "node src/commands/recipients-seed.js",

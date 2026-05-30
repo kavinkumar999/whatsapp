@@ -8,6 +8,7 @@
 //      MESSAGES_RESET_CURSOR=1   also reset the cursor to 0 after upload
 
 import messages from '../data/messages.js';
+import { printCliFailure } from '../lib/cli-print.js';
 import { requireUpstashEnv } from '../lib/env.js';
 import { seedMessages } from '../lib/messages.js';
 
@@ -31,6 +32,5 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err.message || err);
-  process.exit(1);
+  printCliFailure(err, { title: 'messages:seed failed', titleIcon: '💬' });
 });

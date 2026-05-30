@@ -13,6 +13,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
+import { printCliFailure } from '../lib/cli-print.js';
 import { requireUpstashEnv } from '../lib/env.js';
 import { authSnapshotKey, clearAuthSnapshot, restoreAuthDir, saveAuthDir } from '../lib/store.js';
 import { sleep } from '../lib/util.js';
@@ -66,7 +67,10 @@ async function main() {
     onConnectionUpdate: (update) => {
       if (update.qr) {
         void printQr(update.qr).catch((err) => {
-          console.error('Could not render QR:', err.message || err);
+          printCliFailure(err, {
+            title: 'Could not render the QR in this terminal',
+            titleIcon: '📱',
+          });
         });
       }
     },
@@ -80,9 +84,6 @@ async function main() {
   console.log('Done. The session is seeded — CI can now send messages.');
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err.message || err);
-    process.exit(1);
-  });
+main().catch((err) => {
+  printCliFailure(err, { title: 'Link failed', titleIcon: '🔗' });
+});
