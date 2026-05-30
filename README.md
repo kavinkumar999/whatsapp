@@ -1,4 +1,4 @@
-# WhatsApp automation — Phase 1 (send)
+# WhatsApp automation (send)
 
 Send WhatsApp messages with [Baileys](https://github.com/WhiskeySockets/Baileys),
 triggered from GitHub Actions. The WhatsApp session is stored in **Upstash Redis**
@@ -150,5 +150,5 @@ quotes.example.json      sample 30-day list; copy to quotes.json for seeding
 
 ## Roadmap
 
-- **Phase 2:** in-process scheduler (reliable timing), per-recipient queue, media
-  messages, delivery/read receipts.
+- In-process scheduler (reliable timing), per-recipient queue, media messages,
+  delivery/read receipts.

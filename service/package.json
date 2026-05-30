@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Phase 1: send WhatsApp messages via Baileys, triggered from GitHub Actions, with the session persisted in Upstash Redis.",
+  "description": "Send WhatsApp messages via Baileys, triggered from GitHub Actions, with the session persisted in Upstash Redis.",
   "scripts": {
     "link": "node src/link.js",
     "send": "node src/send.js",
