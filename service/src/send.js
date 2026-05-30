@@ -5,15 +5,18 @@ import './load-env.js';
 // Works from repo root or from service/: default recipients path is ./recipients.json
 // in cwd, or ../recipients.json next to this package (repo root layout).
 //
-// Required env:  MESSAGE, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
+// Required env:  UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
+//                Either MESSAGE (plain text) or MESSAGE_SOURCE=redis (rotating quotes in Upstash).
 // Optional env:  RECIPIENTS_FILE (path to JSON list), AUTH_DIR,
 //                MIN_DELAY_MS / MAX_DELAY_MS (throttle between messages).
+//                UPSTASH_QUOTES_KEY / UPSTASH_QUOTES_CURSOR_KEY (when using redis quotes).
 
 import { DisconnectReason } from '@whiskeysockets/baileys';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getNextQuote } from './quotes.js';
 import { restoreAuthDir, saveAuthDir } from './store.js';
 import { openOnce } from './whatsapp.js';
 
@@ -85,9 +88,22 @@ async function connect() {
   throw new Error(`Could not establish a connection after ${MAX_CONNECT_ATTEMPTS} attempts`);
 }
 
-async function main() {
+async function resolveMessage() {
+  const source = (process.env.MESSAGE_SOURCE || 'env').toLowerCase();
+  if (source === 'redis') {
+    return getNextQuote();
+  }
   const message = process.env.MESSAGE;
-  if (!message) throw new Error('MESSAGE env var is required');
+  if (!message?.trim()) {
+    throw new Error(
+      'Set MESSAGE, or set MESSAGE_SOURCE=redis with a JSON quote list in Upstash (see README).'
+    );
+  }
+  return message;
+}
+
+async function main() {
+  const message = await resolveMessage();
 
   const restored = await restoreAuthDir(AUTH_DIR);
   if (!restored) {

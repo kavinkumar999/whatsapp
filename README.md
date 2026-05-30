@@ -18,9 +18,12 @@ service/                 Baileys sender (Node, ESM)
   src/whatsapp.js        open a Baileys connection
   src/link.js            ONE-TIME local pairing -> seeds Upstash
   src/send.js            CI entrypoint: restore -> send -> save
+  src/quotes.js          next quote from Upstash + advance cursor
+  src/quotes-seed.js     upload/replace quote JSON array in Upstash
   src/group-id.js        print group @g.us JIDs (invite URL or --list)
 recipients.json          who to message (number or group jid + optional name)
-.github/workflows/send.yml   manual + scheduled trigger
+quotes.example.json      sample 30-day list; copy to quotes.json for seeding
+.github/workflows/send.yml   manual + ~6 AM IST daily (Redis quote rotation)
 ```
 
 ## One-time setup
@@ -73,7 +76,25 @@ recipients.json          who to message (number or group jid + optional name)
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
 
-4. **Edit `recipients.json`** with the real numbers / group jid.
+4. **Daily quotes (scheduled sends):** the workflow runs on a **6 AM India (IST)** cron
+   (`30 0 * * *` UTC — IST is UTC+5:30 year-round). That run uses **`MESSAGE_SOURCE=redis`**:
+   it reads a **JSON array of strings** from Upstash key **`wa:quotes`** (default), sends the
+   string at the current **cursor** key **`wa:quotes:cursor`**, then stores the next index
+   (wraps after the last item). You can change the list anytime in the Upstash console or by
+   re-seeding; the cursor keeps advancing modulo the new length.
+
+   **Seed or refresh the list from a file** (after `service/.env` has `UPSTASH_*`):
+
+   ```bash
+   cp quotes.example.json quotes.json   # edit quotes.json, then:
+   cd service && npm run quotes:seed -- ../quotes.json
+   ```
+
+   Optional: **`QUOTES_RESET_CURSOR=1 npm run quotes:seed -- ../quotes.json`** resets the
+   cursor to 0 so the next send starts at the first quote. Override keys with
+   **`UPSTASH_QUOTES_KEY`** / **`UPSTASH_QUOTES_CURSOR_KEY`** in `.env` or GitHub env if needed.
+
+5. **Edit `recipients.json`** with the real numbers / group jid.
    - `to`: international number, digits only (e.g. `919876543210`), **or** a group
      jid ending in `@g.us`.
    - `name`: optional; `{{name}}` in the message is replaced with it.
@@ -87,7 +108,7 @@ recipients.json          who to message (number or group jid + optional name)
 
    That id is **not** the same string as an invite link (`https://chat.whatsapp.com/…`).
 
-   **Find the id (after `npm run link` once, from `service/` with `service/.env` set):**
+6. **Find the id (after `npm run link` once, from `service/` with `service/.env` set):**
 
    - **You are already in the group:** list every group JID for the linked account:
 
@@ -106,13 +127,14 @@ recipients.json          who to message (number or group jid + optional name)
 
 ## Sending
 
-- **Manual:** Actions tab → *Send WhatsApp messages* → *Run workflow* → type a message.
-- **Scheduled:** edit the `cron` in `.github/workflows/send.yml`. (GitHub cron is
-  best-effort and can run late — fine for low-stakes sends.)
+- **Manual:** Actions tab → *Send WhatsApp messages* → *Run workflow* → type a message
+  (uses `MESSAGE` from the form, not Redis quotes).
+- **Scheduled:** ~**6:00 IST** daily (`30 0 * * *` UTC). Uses the **next quote** from Upstash
+  and advances the cursor. (GitHub cron is best-effort and can run a few minutes late.)
 - **Local (same vars as `export`, but in `service/.env`):** copy
-  `service/.env.example` → `service/.env`, set `UPSTASH_*`, `MESSAGE`, then either
-  **`cd service && npm run send`** (uses `recipients.json` at the repo root) or from the
-  **repo root**:
+  `service/.env.example` → `service/.env`, set `UPSTASH_*`, then either set **`MESSAGE`**
+  or **`MESSAGE_SOURCE=redis`** (quotes must exist in Upstash). Run **`cd service && npm run send`**
+  or from the **repo root**:
 
   ```bash
   node service/src/send.js
