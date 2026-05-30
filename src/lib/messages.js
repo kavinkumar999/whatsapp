@@ -1,7 +1,9 @@
 // Daily message rotation in Upstash Redis.
-//   list:   JSON array of strings             (KEYS.messages,       default wa:messages)
-//   cursor: integer index of the next message (KEYS.messagesCursor, default wa:messages:cursor)
-// The cursor wraps modulo the current list length, so the list can change size.
+//   list:    JSON array of strings (KEYS.messages,        default wa:messages)
+//   cursor:  integer index of the next message (KEYS.messagesCursor)
+//   count:   integer list length, set on seed (KEYS.messagesCount); repaired on read if stale
+// The cursor is always normalized with `%` against the current list length so it
+// cannot point past the last message.
 
 import { KEYS, redis } from './redis.js';
 
@@ -19,8 +21,9 @@ async function readMessageList() {
   return list;
 }
 
-/** Normalize a raw cursor value into a valid index for a list of `length`. */
-function normalizeCursor(raw, length) {
+/** Normalize a raw cursor value into a valid index in `[0, length)` (Euclidean mod). */
+export function normalizeCursor(raw, length) {
+  if (!Number.isFinite(length) || length <= 0) return 0;
   const idx = Number(raw);
   if (!Number.isFinite(idx)) return 0;
   return ((Math.trunc(idx) % length) + length) % length;
@@ -34,13 +37,24 @@ function normalizeCursor(raw, length) {
  */
 export async function getCurrentMessage() {
   const list = await readMessageList();
-  const index = normalizeCursor(await redis().get(KEYS.messagesCursor), list.length);
+  const len = list.length;
+
+  const [rawCursor, rawCount] = await Promise.all([
+    redis().get(KEYS.messagesCursor),
+    redis().get(KEYS.messagesCount),
+  ]);
+  const n = Number(rawCount);
+  if (!Number.isFinite(n) || n !== len) {
+    await redis().set(KEYS.messagesCount, len);
+  }
+
+  const index = normalizeCursor(rawCursor, len);
 
   const text = list[index];
   if (typeof text !== 'string' || !text.trim()) {
     throw new Error(`Message at index ${index} is missing or not a non-empty string`);
   }
-  return { text: text.trim(), index, count: list.length };
+  return { text: text.trim(), index, count: len };
 }
 
 /**
@@ -49,17 +63,23 @@ export async function getCurrentMessage() {
  * @returns {Promise<number>} the new cursor value.
  */
 export async function advanceCursor(index, count) {
-  const next = (index + 1) % count;
+  if (!Number.isFinite(count) || count <= 0) return 0;
+  const safe = normalizeCursor(index, count);
+  const next = (safe + 1) % count;
   await redis().set(KEYS.messagesCursor, next);
   return next;
 }
 
 /**
- * Replace the message list in Upstash with `messages` (already validated strings).
- * @param {string[]} messages
- * @param {{ resetCursor?: boolean }} [options]
+ * Replace the message list in Upstash and reset the cursor to **0** so the next
+ * send starts at the first message. Also stores the list length under `messagesCount`
+ * so metadata stays aligned with the array.
+ *
+ * @param {string[]} messages — non-empty validated strings
  */
-export async function seedMessages(messages, { resetCursor = false } = {}) {
+export async function seedMessages(messages) {
+  const len = messages.length;
   await redis().set(KEYS.messages, messages);
-  if (resetCursor) await redis().set(KEYS.messagesCursor, 0);
+  await redis().set(KEYS.messagesCursor, 0);
+  await redis().set(KEYS.messagesCount, len);
 }

@@ -2,10 +2,10 @@
 //
 //   npm run messages:seed
 // Edit the list in src/data/messages.js, then run this to push it.
+// The message cursor is always reset to 0 so the next send starts at the first line.
 //
 // Env: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
 //      UPSTASH_MESSAGES_KEY / UPSTASH_MESSAGES_CURSOR_KEY (override default keys)
-//      MESSAGES_RESET_CURSOR=1   also reset the cursor to 0 after upload
 
 import messages from '../data/messages.js';
 import { printCliFailure } from '../lib/cli-print.js';
@@ -25,10 +25,9 @@ async function main() {
     return m.trim();
   });
 
-  const resetCursor = process.env.MESSAGES_RESET_CURSOR === '1';
-  await seedMessages(cleaned, { resetCursor });
-  console.log(`Uploaded ${cleaned.length} messages to Upstash.`);
-  if (resetCursor) console.log('Reset the cursor to 0 — the next send starts at the first message.');
+  await seedMessages(cleaned);
+  console.log(`Uploaded ${cleaned.length} messages to Upstash (count key + cursor reset).`);
+  console.log('Cursor reset to 0 — the next send starts at the first message.');
 }
 
 main().catch((err) => {

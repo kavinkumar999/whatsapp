@@ -7,8 +7,8 @@
 // A QR code prints in the terminal — scan it from WhatsApp → Linked devices →
 // Link a device → Scan QR code.
 //
-// If linking dies with "logged out" or no QR ever appears, reset and retry:
-//   LINK_FRESH=1 npm run link
+// On success the process calls process.exit(0) so the terminal returns — Baileys
+// may otherwise keep the event loop alive after sock.end.
 
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -82,6 +82,8 @@ async function main() {
   await saveAuthDir(AUTH_DIR);
   sock.end(undefined);
   console.log('Done. The session is seeded — CI can now send messages.');
+  // Baileys can leave timers/sockets open; force a clean exit so the shell returns.
+  process.exit(0);
 }
 
 main().catch((err) => {

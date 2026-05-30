@@ -21,6 +21,8 @@ export const KEYS = {
   messages: process.env.UPSTASH_MESSAGES_KEY || 'wa:messages',
   /** Integer index of the next message to send. */
   messagesCursor: process.env.UPSTASH_MESSAGES_CURSOR_KEY || 'wa:messages:cursor',
+  /** Integer list length (set on seed; used to keep cursor and list in sync). */
+  messagesCount: process.env.UPSTASH_MESSAGES_COUNT_KEY || 'wa:messages:count',
   /** JSON array of recipients ({ to, name? } or bare strings). */
   recipients: process.env.UPSTASH_RECIPIENTS_KEY || 'wa:recipients',
 };
