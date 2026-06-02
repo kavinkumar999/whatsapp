@@ -5,10 +5,12 @@ on:
   # advance the cursor. Manual runs are handy for testing; scheduled runs are the
   # daily ~6 AM IST send.
   workflow_dispatch:
-  # Scheduled trigger: 00:30 UTC = 06:00 IST (India, UTC+5:30, no DST).
-  # GitHub cron is best-effort and can be delayed/skipped.
+  # Scheduled trigger: 20:00 UTC = 01:30 IST nominal (India, UTC+5:30, no DST).
+  # GitHub cron is best-effort: the 00:30 UTC slot was firing ~4.5h late (~10:30 IST),
+  # so we schedule 4:30 earlier to make the actual run land near 06:00 IST. This relies
+  # on the delay staying consistent; revisit if runs drift.
   schedule:
-    - cron: "30 0 * * *"
+    - cron: "0 20 * * *"
 
 # Never let two runs touch the Upstash session at the same time — overlapping
 # runs would race and clobber each other's saved auth state.
