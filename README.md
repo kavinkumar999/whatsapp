@@ -1,4 +1,4 @@
-# WhatsApp sender
+# cronwhats
 
 Schedule and send WhatsApp messages from **GitHub Actions** using [Baileys](https://github.com/WhiskeySockets/Baileys). Session, message rotation, and recipient lists all live in [**Upstash Redis**](https://upstash.com), so CI runners stay **stateless**: restore the linked device, send, persist the updated session.
 
