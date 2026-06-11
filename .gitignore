@@ -3,4 +3,5 @@ auth_info/
 .env
 *.log
 .claude/
-src/data/
+src/data/*
+!src/data/.gitkeep
