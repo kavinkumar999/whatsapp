@@ -7,6 +7,14 @@
 
 import { KEYS, redis } from './redis.js';
 
+export const MORNING_GREETING = '🌟✨ *வெற்றியின் காலை வணக்கம்!* ✨🌟';
+
+/** Append the morning greeting to the end of a message body before sending. */
+export function formatMessageForSend(text) {
+  const body = text.trim();
+  return body ? `${body}\n\n${MORNING_GREETING}` : MORNING_GREETING;
+}
+
 /** Read and validate the message list, throwing a friendly error if unusable. */
 async function readMessageList() {
   const list = await redis().get(KEYS.messages);
@@ -54,7 +62,7 @@ export async function getCurrentMessage() {
   if (typeof text !== 'string' || !text.trim()) {
     throw new Error(`Message at index ${index} is missing or not a non-empty string`);
   }
-  return { text: text.trim(), index, count: len };
+  return { text: formatMessageForSend(text), index, count: len };
 }
 
 /**
